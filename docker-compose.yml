@@ -7,7 +7,8 @@
 #
 # Aislamiento respecto de otros proyectos: el nombre de proyecto "rutasur" separa contenedores, red y
 # volúmenes. Lo único compartido con la máquina son los puertos publicados: si alguno está ocupado,
-# cambialo en un archivo .env (ver .env.ejemplo), por ejemplo PUERTO_MONGO=27018.
+# cambialo en un archivo .env junto a este archivo, por ejemplo: PUERTO_MONGO=27018
+# Variables: PUERTO_WEB, PUERTO_SIMULADOR, PUERTO_KAFKA_UI, PUERTO_KAFKA, PUERTO_MONGO.
 name: rutasur
 
 x-backend: &backend

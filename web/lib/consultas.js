@@ -123,12 +123,13 @@ export async function datosAnalitica(params) {
       .toArray(),
   ]);
   const o = opciones[0] ?? { zonas: [], hubs: [], fechas: [] };
-  return plano({
+  // Sin plano(): en los resultados de agregación el _id ES la clave del grupo y hay que conservarlo.
+  return JSON.parse(JSON.stringify({
     porZonaFranja,
     porDia,
     motivos,
     sla,
     tiempoHub,
     opciones: { zonas: o.zonas.filter(Boolean).sort(), hubs: o.hubs.filter(Boolean).sort(), fechas: o.fechas.sort() },
-  });
+  }));
 }
