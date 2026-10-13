@@ -1,0 +1,30 @@
+{
+  "name": "rutasur-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RutaSur: simulador y servicios consumidores (Kafka + MongoDB)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test",
+    "simulador": "node src/simulador/index.js",
+    "proyector": "node src/servicios/proyector/index.js",
+    "notificaciones": "node src/servicios/notificaciones/index.js",
+    "reprogramacion": "node src/servicios/reprogramacion/index.js",
+    "monitor-sla": "node src/servicios/monitor-sla/index.js",
+    "analitica": "node src/servicios/analitica/index.js",
+    "analitica-tiempo-hub": "node src/servicios/analitica-tiempo-hub/index.js",
+    "crear-topics": "node src/scripts/crear-topics.js",
+    "lag": "node src/scripts/lag.js",
+    "dlq": "node src/scripts/ver-dlq.js",
+    "reprocesar": "node src/scripts/reprocesar.js",
+    "snapshot": "node src/scripts/snapshot.js",
+    "recuento": "node src/scripts/recuento.js"
+  },
+  "dependencies": {
+    "kafkajs": "2.2.4",
+    "mongodb": "6.8.0"
+  }
+}

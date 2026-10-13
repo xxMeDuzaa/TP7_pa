@@ -1,0 +1,170 @@
+# RutaSur: todo el entorno se levanta con un solo comando:
+#   docker compose up -d --build
+#
+# Interfaz:   http://localhost:3000   (torre de control, tracking, analítica, panel de demo)
+# Kafka UI:   http://localhost:8080   (topics, mensajes, lag por grupo)
+# Simulador:  http://localhost:4000/estado
+#
+# Aislamiento respecto de otros proyectos: el nombre de proyecto "rutasur" separa contenedores, red y
+# volúmenes. Lo único compartido con la máquina son los puertos publicados: si alguno está ocupado,
+# cambialo en un archivo .env (ver .env.ejemplo), por ejemplo PUERTO_MONGO=27018.
+name: rutasur
+
+x-backend: &backend
+  build: ./backend
+  image: rutasur-backend:local
+  restart: unless-stopped
+  environment: &backend-env
+    KAFKA_BROKERS: kafka:9092
+    MONGO_URL: mongodb://mongo:27017/?directConnection=true
+    MONGO_DB: rutasur
+  depends_on: &backend-deps
+    kafka-init:
+      condition: service_completed_successfully
+    mongo:
+      condition: service_healthy
+
+services:
+  # ---------------------------------------------------------------- infraestructura
+  kafka:
+    image: apache/kafka:3.8.0
+    hostname: kafka
+    ports:
+      - "${PUERTO_KAFKA:-9094}:9094" # acceso desde la máquina anfitriona
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller # modo KRaft: un solo contenedor, sin ZooKeeper
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:${PUERTO_KAFKA:-9094}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_LOG_CLEANER_BACKOFF_MS: 5000
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 15s
+
+  mongo:
+    image: mongo:7.0
+    hostname: mongo
+    command: ["--replSet", "rs0", "--bind_ip_all"] # replica set de un nodo: habilita change streams y transacciones
+    ports:
+      - "${PUERTO_MONGO:-27017}:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # Inicializa el replica set la primera vez y luego solo verifica que esté arriba.
+      test: ["CMD", "mongosh", "--quiet", "--eval", "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }).ok }"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
+
+  kafka-init:
+    <<: *backend
+    restart: "no"
+    command: ["node", "src/scripts/crear-topics.js"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    ports:
+      - "${PUERTO_KAFKA_UI:-8080}:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: rutasur
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------- productor
+  simulador:
+    <<: *backend
+    command: ["node", "src/simulador/index.js"]
+    ports:
+      - "${PUERTO_SIMULADOR:-4000}:4000"
+    environment:
+      <<: *backend-env
+      SIM_DATOS_DIR: /data
+      SIM_SEMILLA: "42"
+      SIM_ENVIOS_POR_MINUTO: "20"
+      SIM_FACTOR: "120" # 1 hora simulada = 30 segundos
+      SIM_INICIO: "2026-10-05T09:00:00-03:00"
+      SIM_PROB_DEMORA: "0.10"
+      SIM_PROB_DUPLICADO: "0.02"
+      SIM_PROB_FUERA_DE_ORDEN: "0.02"
+      SIM_PROB_MALFORMADO: "0.01"
+    volumes:
+      - simulador-data:/data
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+  # ---------------------------------------------------------------- consumidores (un proceso cada uno)
+  proyector:
+    <<: *backend
+    command: ["node", "src/servicios/proyector/index.js"]
+
+  notificaciones:
+    <<: *backend
+    command: ["node", "src/servicios/notificaciones/index.js"]
+
+  reprogramacion:
+    <<: *backend
+    command: ["node", "src/servicios/reprogramacion/index.js"]
+
+  monitor-sla:
+    <<: *backend
+    command: ["node", "src/servicios/monitor-sla/index.js"]
+
+  analitica:
+    <<: *backend
+    command: ["node", "src/servicios/analitica/index.js"]
+
+  # Cuarto indicador: grupo de consumidores nuevo, se levanta a pedido durante la demo (paso 8).
+  analitica-tiempo-hub:
+    <<: *backend
+    command: ["node", "src/servicios/analitica-tiempo-hub/index.js"]
+    profiles: ["reproceso"]
+
+  # Contenedor de herramientas para los scripts (lag, DLQ, reprocesar, snapshot, recuento).
+  herramientas:
+    <<: *backend
+    restart: "no"
+    command: ["node", "src/scripts/lag.js"]
+    profiles: ["herramientas"]
+
+  # ---------------------------------------------------------------- interfaz
+  web:
+    build: ./web
+    image: rutasur-web:local
+    restart: unless-stopped
+    ports:
+      - "${PUERTO_WEB:-3000}:3000"
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?directConnection=true
+      MONGO_DB: rutasur
+      SIMULADOR_URL: http://simulador:4000
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  kafka-data:
+  mongo-data:
+  simulador-data:
