@@ -2,6 +2,8 @@
 
 Trabajo práctico 7 · Programación Avanzada 2026 · Licenciatura en Sistemas de Información (FCyT, UADER)
 
+**Autora:** Melina Mas Duarte
+
 Plataforma de seguimiento de envíos en tiempo real para un operador de última milla ficticio, de punta a punta:
 desde la generación de eventos hasta el tablero del supervisor. Cada cambio de estado de un envío es un evento;
 eso permite **intervenir durante la operación** en lugar de analizar los fracasos al día siguiente.
@@ -36,6 +38,11 @@ Para empezar de cero (borra Kafka, MongoDB y el estado del simulador):
 ```bash
 docker compose down -v
 ```
+
+Hacelo también si Docker se cerró de golpe (PC suspendida o apagada, contenedores en `Exited (137)`).
+Kafka, MongoDB y el simulador pueden quedar en momentos distintos, por ejemplo con el reloj del monitor de SLA
+adelantado al del simulador y alertas `VENCIDO` en envíos recién creados. Como todos los datos son simulados,
+lo más simple es borrar todo y volver a levantar el entorno con `docker compose up -d --build`.
 
 ---
 

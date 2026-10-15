@@ -30,6 +30,7 @@ services:
   kafka:
     image: apache/kafka:3.8.0
     hostname: kafka
+    restart: unless-stopped
     ports:
       - "${PUERTO_KAFKA:-9094}:9094" # acceso desde la máquina anfitriona
     environment:
@@ -61,6 +62,7 @@ services:
   mongo:
     image: mongo:7.0
     hostname: mongo
+    restart: unless-stopped
     command: ["--replSet", "rs0", "--bind_ip_all"] # replica set de un nodo: habilita change streams y transacciones
     ports:
       - "${PUERTO_MONGO:-27017}:27017"
